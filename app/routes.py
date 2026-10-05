@@ -1,6 +1,7 @@
 from flask import Blueprint, request
 
 from app.data import inventory
+from app.openfoodfacts import get_product_by_barcode
 
 
 inventory_bp = Blueprint("inventory", __name__)
@@ -18,6 +19,17 @@ def get_inventory_item(item_id):
             return item
 
     return {"error": "Inventory item not found"}, 404
+
+@inventory_bp.route("/products/external/<barcode>", methods=["GET"])
+def get_external_product(barcode):
+    product = get_product_by_barcode(barcode)
+
+    if product is None:
+        return {
+            "error": "Product not found or OpenFoodFacts unavailable"
+        }, 404
+
+    return product
 
 
 @inventory_bp.route("/inventory", methods=["POST"])
@@ -54,6 +66,39 @@ def create_inventory_item():
         "ingredients_text": data["ingredients_text"],
         "price": data["price"],
         "stock": data["stock"]
+    }
+
+    inventory.append(new_item)
+
+    return new_item, 201
+
+@inventory_bp.route("/inventory/import/<barcode>", methods=["POST"])
+def import_external_product(barcode):
+    for item in inventory:
+        if item["barcode"] == barcode:
+            return {
+                "error": "Product already exists in inventory"
+            }, 409
+
+    product = get_product_by_barcode(barcode)
+
+    if product is None:
+        return {
+            "error": "Product not found or OpenFoodFacts unavailable"
+        }, 404
+
+    new_item = {
+        "id": max((item["id"] for item in inventory), default=0) + 1,
+        "barcode": product.get("code", barcode),
+        "product_name": product.get("product_name", "Unknown"),
+        "brand": product.get("brands", "Unknown"),
+        "category": product.get("categories", "Unknown"),
+        "ingredients_text": product.get(
+            "ingredients_text",
+            "Not available"
+        ),
+        "price": 0,
+        "stock": 0
     }
 
     inventory.append(new_item)
